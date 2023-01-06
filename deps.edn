@@ -2,7 +2,7 @@
  ["src" "resources"]
 
  :deps
- {com.databricks/databricks-jdbc {:mvn/version "2.6.27"}}
+ {com.databricks/databricks-jdbc {:mvn/version "2.6.32"}}
 
  ;; build the driver with clojure -X:build
  :aliases

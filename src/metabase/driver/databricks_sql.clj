@@ -1,6 +1,9 @@
 (ns metabase.driver.databricks-sql
   (:require [clojure.java.jdbc :as jdbc]
             [clojure.string :as str]
+            [honeysql.core :as hsql]
+            [honeysql.format :as hformat]
+            [metabase.util.honeysql-extensions :as hx]
             [medley.core :as m]
             [metabase.driver :as driver] 
             [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
@@ -169,3 +172,85 @@
   (defmethod driver/supports? [:databricks-sql :foreign-keys] [_ _] true))
 
 (defmethod sql.qp/quote-style :databricks-sql [_] :mysql)
+
+(defn- date-format [format-str expr]
+  (hsql/call :date_format expr (hx/literal format-str)))
+
+(defn- str-to-date [format-str expr]
+  (hx/->timestamp
+   (hsql/call :from_unixtime
+              (hsql/call :unix_timestamp
+                         expr (hx/literal format-str)))))
+
+(defn- trunc-with-format [format-str expr]
+  (str-to-date format-str (date-format format-str expr)))
+
+(defmethod sql.qp/date [:databricks-sql :default]         [_ _ expr] (hx/->timestamp expr))
+(defmethod sql.qp/date [:databricks-sql :minute]          [_ _ expr] (trunc-with-format "yyyy-MM-dd HH:mm" (hx/->timestamp expr)))
+(defmethod sql.qp/date [:databricks-sql :minute-of-hour]  [_ _ expr] (hsql/call :minute (hx/->timestamp expr)))
+(defmethod sql.qp/date [:databricks-sql :hour]            [_ _ expr] (trunc-with-format "yyyy-MM-dd HH" (hx/->timestamp expr)))
+(defmethod sql.qp/date [:databricks-sql :hour-of-day]     [_ _ expr] (hsql/call :hour (hx/->timestamp expr)))
+(defmethod sql.qp/date [:databricks-sql :day]             [_ _ expr] (trunc-with-format "yyyy-MM-dd" (hx/->timestamp expr)))
+(defmethod sql.qp/date [:databricks-sql :day-of-month]    [_ _ expr] (hsql/call :dayofmonth (hx/->timestamp expr)))
+(defmethod sql.qp/date [:databricks-sql :day-of-year]     [_ _ expr] (hx/->integer (date-format "D" (hx/->timestamp expr))))
+(defmethod sql.qp/date [:databricks-sql :month]           [_ _ expr] (hsql/call :trunc (hx/->timestamp expr) (hx/literal :MM)))
+(defmethod sql.qp/date [:databricks-sql :month-of-year]   [_ _ expr] (hsql/call :month (hx/->timestamp expr)))
+(defmethod sql.qp/date [:databricks-sql :quarter-of-year] [_ _ expr] (hsql/call :quarter (hx/->timestamp expr)))
+(defmethod sql.qp/date [:databricks-sql :year]            [_ _ expr] (hsql/call :trunc (hx/->timestamp expr) (hx/literal :year)))
+
+(defmethod driver/db-start-of-week :databricks-sql
+  [_]
+  :sunday)
+
+(defrecord DateExtract [unit expr]
+  hformat/ToSql
+  (to-sql [_this]
+    (format "extract(%s FROM %s)" (name unit) (hformat/to-sql expr))))
+
+(defmethod sql.qp/date [:databricks-sql :day-of-week]
+  [driver _unit expr]
+  (sql.qp/adjust-day-of-week driver (-> (->DateExtract :dow (hx/->timestamp expr))
+                                        (hx/with-database-type-info "integer"))))
+
+(defmethod sql.qp/date [:databricks-sql :week]
+  [driver _ expr]
+  (let [week-extract-fn (fn [expr]
+                          (-> (hsql/call :date_sub
+                                         (hx/+ (hx/->timestamp expr)
+                                               (hsql/raw "interval '7' day"))
+                                         (->DateExtract :dow (hx/->timestamp expr)))
+                              (hx/with-database-type-info "timestamp")))]
+    (sql.qp/adjust-start-of-week driver week-extract-fn expr)))
+
+(defmethod sql.qp/date [:databricks-sql :quarter]
+  [_ _ expr]
+  (hsql/call :add_months
+    (hsql/call :trunc (hx/->timestamp expr) (hx/literal :year))
+    (hx/* (hx/- (hsql/call :quarter (hx/->timestamp expr))
+                1)
+          3)))
+
+(defmethod sql.qp/->honeysql [:databricks-sql :replace]
+  [driver [_ arg pattern replacement]]
+  (hsql/call :regexp_replace
+    (sql.qp/->honeysql driver arg)
+    (sql.qp/->honeysql driver pattern)
+    (sql.qp/->honeysql driver replacement)))
+
+(defmethod sql.qp/->honeysql [:databricks-sql :regex-match-first]
+  [driver [_ arg pattern]]
+  (hsql/call :regexp_extract (sql.qp/->honeysql driver arg) (sql.qp/->honeysql driver pattern) 0))
+
+(defmethod sql.qp/->honeysql [:databricks-sql :median]
+  [driver [_ arg]]
+  (hsql/call :percentile (sql.qp/->honeysql driver arg) 0.5))
+
+(defmethod sql.qp/->honeysql [:databricks-sql :percentile]
+  [driver [_ arg p]]
+  (hsql/call :percentile (sql.qp/->honeysql driver arg) (sql.qp/->honeysql driver p)))
+
+(defmethod sql.qp/add-interval-honeysql-form :databricks-sql
+  [driver hsql-form amount unit]
+  (if (= unit :quarter)
+    (recur driver hsql-form (* amount 3) :month)
+    (hx/+ (hx/->timestamp hsql-form) (hsql/raw (format "(INTERVAL '%d' %s)" (int amount) (name unit))))))

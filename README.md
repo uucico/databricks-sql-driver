@@ -24,6 +24,8 @@ Once the Metabase startup completes, you can access your Metabase at `localhost:
 
 Copy `host`, `http-path` and your `personal-access-token` to metabase form.
 
+You can set the default catalog, by adding it to `Additional JDBC connection string options`. Just write the catalog name in the field. The field name is misleading, but Metabase fields are limited, and  this is the best I could do at the moment
+
 
 ![](screenshots/databricks-sql.png)
 ![](screenshots/metabase-form.png)

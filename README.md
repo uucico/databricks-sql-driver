@@ -16,8 +16,6 @@ make build
 ## Run Locally
 
 ```
-docker pull metabase/metabase:latest
-
 make run
 ```
 Once the Metabase startup completes, you can access your Metabase at `localhost:3000`.

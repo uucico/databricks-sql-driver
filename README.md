@@ -16,17 +16,15 @@ make build
 ## Run Locally
 
 ```
-docker pull metabase/metabase:latest
-
 make run
 ```
 Once the Metabase startup completes, you can access your Metabase at `localhost:3000`.
 
 ## Usage
 
-Copy `host`, `http-path` and your `personal-access-token` to metabase form.
+Copy `host`, `http-path`, `personal-access-token`, `Catalog` and `database` to metabase form.
 
 
 ![](screenshots/databricks-sql.png)
-![](screenshots/metabase-form.png)
+![](screenshots/metabase-form-2.png)
 

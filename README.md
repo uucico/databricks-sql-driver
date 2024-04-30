@@ -28,5 +28,5 @@ You can set the default catalog, by adding it to `Additional JDBC connection str
 
 
 ![](screenshots/databricks-sql.png)
-![](screenshots/metabase-form.png)
+![](screenshots/metabase-form-2.png)
 

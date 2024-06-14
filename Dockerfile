@@ -5,7 +5,7 @@ COPY . /driver
 RUN apt-get update && apt-get install -y \
 curl
 
-ARG METABASE_VERSION="v0.49.3"
+ARG METABASE_VERSION="v0.50.4"
 
 RUN curl -Lo - https://github.com/metabase/metabase/archive/refs/tags/${METABASE_VERSION}.tar.gz | tar -xz && mv metabase-* /metabase
 

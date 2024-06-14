@@ -11,7 +11,7 @@
             [metabase.driver.sql.query-processor :as sql.qp]
             [metabase.driver.sql.util :as sql.u]
             [metabase.driver.sql.util.unprepare :as unprepare]
-            [metabase.mbql.util :as mbql.u]
+            [metabase.legacy-mbql.util :as mbql.u]
             [metabase.query-processor.util :as qp.util]
             [java-time :as t]
             [metabase.util :as u]
@@ -167,12 +167,12 @@
                  :native-parameters
                  :nested-queries
                  :standard-deviation-aggregations]]
-  (defmethod driver/supports? [:databricks-sql feature] [_ _] true))
+  (defmethod driver/database-supports? [:databricks-sql feature] [_ _] true))
 
 ;; only define an implementation for `:foreign-keys` if none exists already. In test extensions we define an alternate
 ;; implementation, and we don't want to stomp over that if it was loaded already
-(when-not (get (methods driver/supports?) [:databricks-sql :foreign-keys])
-  (defmethod driver/supports? [:databricks-sql :foreign-keys] [_ _] true))
+(when-not (get (methods driver/database-supports?) [:databricks-sql :foreign-keys])
+  (defmethod driver/database-supports? [:databricks-sql :foreign-keys] [_ _] true))
 
 (defmethod sql.qp/quote-style :databricks-sql [_] :mysql)
 

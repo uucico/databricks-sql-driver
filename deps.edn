@@ -2,7 +2,7 @@
  ["src" "resources"]
 
  :deps
- {com.databricks/databricks-jdbc {:mvn/version "2.6.36" :exclusion [log4j/log4j]}}
+ {com.databricks/databricks-jdbc {:mvn/version "2.6.38" :exclusion [log4j/log4j]}}
 
  ;; the stuff below is only for hacking on the driver locally and is not needed if you follow the instructions in the
  ;; README and create a `:local/root` dep for the driver and launch the REPL from the Metabase project rather than

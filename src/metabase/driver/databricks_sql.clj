@@ -11,11 +11,13 @@
             [metabase.driver.sql.query-processor :as sql.qp]
             [metabase.driver.sql.util :as sql.u]
             [metabase.driver.sql.util.unprepare :as unprepare]
+            [metabase.driver.sync :as driver.s]
             [metabase.legacy-mbql.util :as mbql.u]
             [metabase.query-processor.util :as qp.util]
             [java-time :as t]
             [metabase.util :as u]
-            [metabase.util.date-2 :as u.date])            
+            [metabase.util.date-2 :as u.date]
+            [metabase.util.log :as log])            
   (:import [java.sql Connection ResultSet Types]
            [java.time LocalDate OffsetDateTime ZonedDateTime]))
 
@@ -67,16 +69,31 @@
     #"map"              :type/Dictionary
     #".*"               :type/*))
 
-;; workaround for SPARK-9686 Spark Thrift server doesn't return correct JDBC metadata
+(def ^:private get-tables-sql  
+  [(str/join
+    "\n"
+    ["select"
+     "  table_name as name,"
+     "  table_schema as schema,"
+     "  table_type as type,"
+     "  comment as description"
+     "  from information_schema.tables"
+     "  where table_schema NOT IN ('information_schema')"])])
+
+(defn- describe-database-tables
+  [database]
+  (let [[inclusion-patterns
+         exclusion-patterns] (driver.s/db-details->schema-filter-patterns database)
+        syncable? (fn [schema]
+                    (driver.s/include-schema? inclusion-patterns exclusion-patterns schema))]
+    (eduction
+     (comp (filter (comp syncable? :schema))
+           (map #(dissoc % :type)))
+     (sql-jdbc.execute/reducible-query database get-tables-sql))))
+
 (defmethod driver/describe-database :databricks-sql
-  [_ database]
-  {:tables
-   (with-open [conn (jdbc/get-connection (sql-jdbc.conn/db->pooled-connection-spec database))]
-     (set
-      (for [{:keys [database tablename], table-namespace :namespace} (jdbc/query {:connection conn} ["show tables"])]
-        {:name   tablename
-         :schema (or (not-empty database)
-                     (not-empty table-namespace))})))})
+  [_driver database]  
+  {:tables (into #{} (describe-database-tables database))})
 
 ;; Hive describe table result has commented rows to distinguish partitions
 (defn- valid-describe-table-row? [{:keys [col_name data_type]}]
@@ -160,14 +177,23 @@
 ;; the current HiveConnection doesn't support .createStatement
 (defmethod sql-jdbc.execute/statement-supported? :databricks-sql [_] false)
 
-(doseq [feature [:basic-aggregations
-                 :binning
-                 :expression-aggregations
-                 :expressions
-                 :native-parameters
-                 :nested-queries
-                 :standard-deviation-aggregations]]
-  (defmethod driver/database-supports? [:databricks-sql feature] [_ _] true))
+
+(doseq [[feature supported?] {:basic-aggregations              true
+                              :binning                         true
+                              :expression-aggregations         true
+                              :expressions                     true
+                              :full-join                       true
+                              :right-join                      true
+                              :left-join                       true
+                              :inner-join                      true
+                              :foreign-keys                    false
+                              :native-parameters               true
+                              :nested-queries                  true
+                              :standard-deviation-aggregations true
+                              :metadata/key-constraints        false
+                              :test/jvm-timezone-setting       false                              
+                              :window-functions/cumulative     false}]
+  (defmethod driver/database-supports? [:databricks-sql feature] [_driver _feature _db] supported?))
 
 ;; only define an implementation for `:foreign-keys` if none exists already. In test extensions we define an alternate
 ;; implementation, and we don't want to stomp over that if it was loaded already
